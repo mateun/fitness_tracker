@@ -1,0 +1,37 @@
+version: '3.9'
+
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://ftuser:ftpass@db:5432/fitness_tracker
+      NODE_ENV: production
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - fitness_tracker
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ftuser
+      POSTGRES_PASSWORD: ftpass
+      POSTGRES_DB: fitness_tracker
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ftuser']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fitness_tracker
+
+volumes:
+  postgres_data:
+
+networks:
+  fitness_tracker:
