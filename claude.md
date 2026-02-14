@@ -36,13 +36,20 @@ Dev notes for LLMs
 - `Dashboard` and `NavBar` are client components. `Dashboard` reads `localStorage` on mount — it must not be server-rendered.
 - Charts use `recharts` (added to `package.json`) — a lightweight, React-friendly charting library suitable for simple dashboards.
 
-Charting library
-- Current: `recharts` — declarative, easy to integrate with React components, good for small dashboards and prototypes.
-- Alternatives: `react-chartjs-2` (Chart.js) for more polished visuals, `nivo` or `visx` for more customization.
+
+Charting & visualization
+- Library: `recharts` — declarative and React-friendly; used by `app/components/Dashboard.tsx` for the home dashboard.
+- Visualization details: the calories chart uses two stacked series per day:
+  - `caloriesBase`: up to the 2000 kcal threshold (rendered in limegreen `#32CD32`).
+  - `caloriesOver`: the portion above 2000 kcal (rendered in red `#ef4444`).
+  This produces a single stacked bar where only the overflow above 2000 is red.
+- Threshold: the dashboard currently uses a hardcoded 2000 kcal threshold. Consider making this configurable via UI or settings if you want flexibility.
+- Alternatives: `react-chartjs-2` (Chart.js) for polished visuals, `nivo` or `visx` for advanced customization.
+
 
 Notes & troubleshooting
-- If you see SSR-related errors about `ssr:false`, the fix is to keep charting/dashboard components strictly client-side (either via dynamic import in a client component or direct import into a client component). This project imports `Dashboard` as a client component.
-- Dates are stored as `YYYY-MM-DD` strings — grouping and filtering is done by string/date conversions in the components.
+- Dashboard and charts are client-only because they read `localStorage`; `Dashboard` is a client component (`"use client"`) and must be imported into server components carefully (avoid `ssr:false` on server components).
+- Dates are stored as `YYYY-MM-DD` strings — grouping and filtering are handled via string/date conversions inside the components.
 
 Suggested next improvements
 - Add edit/delete for entries on `/workouts` and `/food`.

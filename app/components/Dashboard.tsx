@@ -51,7 +51,15 @@ export default function Dashboard() {
     for (const f of foods) {
       if (f.date in map) map[f.date] += Number(f.calories || 0);
     }
-    return dates.map((d) => ({ date: d, calories: map[d] }));
+    return dates.map((d) => {
+      const total = map[d];
+      return {
+        date: d,
+        calories: total,
+        caloriesBase: Math.min(total, 2000),
+        caloriesOver: Math.max(total - 2000, 0),
+      };
+    });
   }, [dates, foods]);
 
   const workoutSeries = useMemo(() => {
@@ -78,7 +86,8 @@ export default function Dashboard() {
                 <XAxis dataKey="date" />
                 <YAxis />
                 <Tooltip />
-                <Bar dataKey="calories" fill="#8884d8" />
+                <Bar dataKey="caloriesBase" stackId="a" fill="#32CD32" />
+                <Bar dataKey="caloriesOver" stackId="a" fill="#ef4444" />
               </BarChart>
             </ResponsiveContainer>
           </div>
