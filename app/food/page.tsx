@@ -1,55 +1,85 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 
 type Food = {
   id: string;
   name: string;
   calories: number;
-  date: string; // YYYY-MM-DD
+  date: string;
 };
 
-const STORAGE_KEY = "foodIntake";
-
-function loadFoods(): Food[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as Food[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveFoods(items: Food[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-  } catch {}
-}
-
 export default function FoodPage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
   const [foods, setFoods] = useState<Food[]>([]);
   const [name, setName] = useState("");
   const [calories, setCalories] = useState<number | "">("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [loading, setLoading] = useState(true);
 
+  // Redirect if not authenticated
   useEffect(() => {
-    setFoods(loadFoods());
-  }, []);
+    if (status === "unauthenticated") {
+      router.push("/auth/signin");
+    }
+  }, [status, router]);
 
-  function handleAdd(e: React.FormEvent) {
+  // Fetch foods on mount
+  useEffect(() => {
+    if (status === "authenticated") {
+      fetchFoods();
+    }
+  }, [status]);
+
+  async function fetchFoods() {
+    try {
+      setLoading(true);
+      const res = await fetch("/api/food");
+      if (!res.ok) throw new Error("Failed to fetch");
+      const data = await res.json();
+      setFoods(data);
+    } catch (error) {
+      console.error("Error fetching foods:", error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
-    const f: Food = {
-      id: String(Date.now()),
-      name: name.trim() || "Food",
-      calories: Number(calories) || 0,
-      date,
-    };
-    const next = [...foods, f];
-    saveFoods(next);
-    setFoods(next);
-    setName("");
-    setCalories("");
-    setDate(new Date().toISOString().slice(0, 10));
+    try {
+      const res = await fetch("/api/food", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date,
+          name: name.trim() || "Food",
+          calories: Number(calories) || 0,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to create food entry");
+      
+      const newFood = await res.json();
+      setFoods([newFood, ...foods]);
+      setName("");
+      setCalories("");
+      setDate(new Date().toISOString().slice(0, 10));
+    } catch (error) {
+      console.error("Error creating food entry:", error);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    try {
+      const res = await fetch(`/api/food/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete");
+      setFoods(foods.filter((f) => f.id !== id));
+    } catch (error) {
+      console.error("Error deleting food entry:", error);
+    }
   }
 
   // group foods by date
@@ -59,6 +89,10 @@ export default function FoodPage() {
   }, {});
 
   const dates = Object.keys(grouped).sort((a, b) => (a < b ? 1 : -1));
+
+  if (status === "loading" || loading) {
+    return <div className="text-center py-12">Loading...</div>;
+  }
 
   return (
     <div className="min-h-screen flex flex-col items-center py-12 px-6">
@@ -119,9 +153,17 @@ export default function FoodPage() {
                   </div>
                   <ul className="space-y-2">
                     {sorted.map((it) => (
-                      <li key={it.id} className="flex justify-between text-sm text-zinc-700 dark:text-zinc-300">
-                        <div>{it.name}</div>
-                        <div>{it.calories} kcal</div>
+                      <li key={it.id} className="flex justify-between items-center text-sm text-zinc-700 dark:text-zinc-300">
+                        <div className="flex-1">
+                          <div>{it.name}</div>
+                          <div className="text-xs text-zinc-500">{it.calories} kcal</div>
+                        </div>
+                        <button
+                          onClick={() => handleDelete(it.id)}
+                          className="text-xs px-2 py-1 rounded bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 ml-2"
+                        >
+                          Delete
+                        </button>
                       </li>
                     ))}
                   </ul>

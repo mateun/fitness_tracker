@@ -1,66 +1,100 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 
 type Workout = {
   id: string;
-  date: string; // YYYY-MM-DD
+  date: string;
   title: string;
-  duration: number; // minutes
+  duration: number;
   notes?: string;
 };
 
-const STORAGE_KEY = "workouts";
-
-function loadWorkouts(): Workout[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as Workout[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveWorkouts(items: Workout[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-  } catch {}
-}
-
 export default function WorkoutsPage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [title, setTitle] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [duration, setDuration] = useState<number | "">("");
   const [notes, setNotes] = useState("");
+  const [loading, setLoading] = useState(true);
 
+  // Redirect if not authenticated
   useEffect(() => {
-    setWorkouts(loadWorkouts());
-  }, []);
+    if (status === "unauthenticated") {
+      router.push("/auth/signin");
+    }
+  }, [status, router]);
 
-  function handleAdd(e: React.FormEvent) {
-    e.preventDefault();
-    const w: Workout = {
-      id: String(Date.now()),
-      date,
-      title: title.trim() || "Workout",
-      duration: Number(duration) || 0,
-      notes: notes.trim() || undefined,
-    };
-    const next = [...workouts, w];
-    saveWorkouts(next);
-    setWorkouts(next);
-    setTitle("");
-    setDuration("");
-    setNotes("");
-    setDate(new Date().toISOString().slice(0, 10));
+  // Fetch workouts on mount
+  useEffect(() => {
+    if (status === "authenticated") {
+      fetchWorkouts();
+    }
+  }, [status]);
+
+  async function fetchWorkouts() {
+    try {
+      setLoading(true);
+      const res = await fetch("/api/workouts");
+      if (!res.ok) throw new Error("Failed to fetch");
+      const data = await res.json();
+      setWorkouts(data);
+    } catch (error) {
+      console.error("Error fetching workouts:", error);
+    } finally {
+      setLoading(false);
+    }
   }
 
-  // filter workouts from the last 7 days
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault();
+    try {
+      const res = await fetch("/api/workouts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date,
+          title: title.trim() || "Workout",
+          duration: Number(duration) || 0,
+          notes: notes.trim() || undefined,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to create workout");
+      
+      const newWorkout = await res.json();
+      setWorkouts([newWorkout, ...workouts]);
+      setTitle("");
+      setDuration("");
+      setNotes("");
+      setDate(new Date().toISOString().slice(0, 10));
+    } catch (error) {
+      console.error("Error creating workout:", error);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    try {
+      const res = await fetch(`/api/workouts/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete");
+      setWorkouts(workouts.filter((w) => w.id !== id));
+    } catch (error) {
+      console.error("Error deleting workout:", error);
+    }
+  }
+
+  // Filter workouts from last 7 days
   const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const recent = workouts
     .filter((w) => new Date(w.date) >= cutoff)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  if (status === "loading" || loading) {
+    return <div className="text-center py-12">Loading...</div>;
+  }
 
   return (
     <div className="min-h-screen flex flex-col items-center py-12 px-6">
@@ -116,16 +150,22 @@ export default function WorkoutsPage() {
         ) : (
           <ul className="space-y-3">
             {recent.map((w) => (
-              <li key={w.id} className="rounded border p-3 bg-white dark:bg-[#0b0b0b]">
-                <div className="flex justify-between">
-                  <div>
-                    <div className="font-medium text-black dark:text-zinc-50">{w.title}</div>
-                    <div className="text-sm text-zinc-600 dark:text-zinc-400">{w.notes}</div>
-                  </div>
+              <li key={w.id} className="rounded border p-3 bg-white dark:bg-[#0b0b0b] flex justify-between items-start">
+                <div>
+                  <div className="font-medium text-black dark:text-zinc-50">{w.title}</div>
+                  <div className="text-sm text-zinc-600 dark:text-zinc-400">{w.notes}</div>
+                </div>
+                <div className="flex flex-col items-end gap-2">
                   <div className="text-right text-sm text-zinc-600 dark:text-zinc-400">
                     <div>{w.date}</div>
                     <div>{w.duration} min</div>
                   </div>
+                  <button
+                    onClick={() => handleDelete(w.id)}
+                    className="text-xs px-2 py-1 rounded bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400"
+                  >
+                    Delete
+                  </button>
                 </div>
               </li>
             ))}

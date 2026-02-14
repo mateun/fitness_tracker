@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { useSession } from "next-auth/react";
 import {
   ResponsiveContainer,
   LineChart,
@@ -16,9 +17,6 @@ import {
 type Food = { id: string; name: string; calories: number; date: string };
 type Workout = { id: string; date: string; title: string; duration: number };
 
-const FOOD_KEY = "foodIntake";
-const WORKOUT_KEY = "workouts";
-
 function lastNDates(n: number) {
   const dates: string[] = [];
   for (let i = n - 1; i >= 0; i--) {
@@ -29,20 +27,38 @@ function lastNDates(n: number) {
 }
 
 export default function Dashboard() {
+  const { data: session, status } = useSession();
   const [foods, setFoods] = useState<Food[]>([]);
   const [workouts, setWorkouts] = useState<Workout[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (status === "authenticated") {
+      fetchData();
+    } else if (status === "unauthenticated") {
+      setLoading(false);
+    }
+  }, [status]);
+
+  async function fetchData() {
     try {
-      const fRaw = localStorage.getItem(FOOD_KEY);
-      const wRaw = localStorage.getItem(WORKOUT_KEY);
-      setFoods(fRaw ? (JSON.parse(fRaw) as Food[]) : []);
-      setWorkouts(wRaw ? (JSON.parse(wRaw) as Workout[]) : []);
-    } catch {
+      setLoading(true);
+      const [fRes, wRes] = await Promise.all([
+        fetch("/api/food"),
+        fetch("/api/workouts"),
+      ]);
+      const foods = fRes.ok ? await fRes.json() : [];
+      const workouts = wRes.ok ? await wRes.json() : [];
+      setFoods(foods);
+      setWorkouts(workouts);
+    } catch (error) {
+      console.error("Error fetching dashboard data:", error);
       setFoods([]);
       setWorkouts([]);
+    } finally {
+      setLoading(false);
     }
-  }, []);
+  }
 
   const dates = useMemo(() => lastNDates(7), []);
 
@@ -69,6 +85,22 @@ export default function Dashboard() {
     }
     return dates.map((d) => ({ date: d, minutes: map[d] }));
   }, [dates, workouts]);
+
+  if (loading) {
+    return (
+      <div className="max-w-3xl mx-auto px-6 py-8 w-full">
+        <div className="text-center text-zinc-600 dark:text-zinc-400">Loading...</div>
+      </div>
+    );
+  }
+
+  if (status === "unauthenticated") {
+    return (
+      <div className="max-w-3xl mx-auto px-6 py-8 w-full">
+        <div className="text-center text-zinc-600 dark:text-zinc-400">Please sign in to view your dashboard.</div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-8 w-full">
